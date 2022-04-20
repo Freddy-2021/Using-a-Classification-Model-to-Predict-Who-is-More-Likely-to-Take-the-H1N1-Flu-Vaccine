@@ -1,0 +1,2555 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "![example](images/pexels-pixabay-40568.png)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Phase 3 Project\n",
+    "\n",
+    "**Author:** Freddy Abrahamson<br>\n",
+    "**Date created:** 3-27-2022<br>\n",
+    "**Discipline:** Data Science"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Overview\n",
+    "For this project, I will be comparing different models:\n",
+    "\n",
+    "* Knn\n",
+    "* Decision Trees\n",
+    "* Random Forest\n",
+    "* XGBoost\n",
+    "\n",
+    "I will run these models with different hyperparameters, to see which one can best predict if a person will, or will not take the h1n1 flu vaccine. I will use the F1 score as my metric."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Business Problem\n",
+    "\n",
+    "As a consequence of the Covid 19 pandemic, there is a renewed interest in the vaccination rates for the seasonal flu. A governmental agency is performing an exploratory analysis to identify who is more lilely to take the seasonal flu vaccine."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Data Understanding\n",
+    "\n",
+    "The data comes from the National 2009 H1N1 Flu Survey ('H1N1_Flu_Vaccines.csv'). The data is comprised of 36 columns, including the target variable, and 26,707 rows. Each row represents a respondent in the survey. The target variable, 'h1n1_vaccine', is a binary variable which represents whether the respondent took the vaccine or not.\n",
+    "\n",
+    "The survey is primarily comprised of binary and multiple choice questions such as:\n",
+    "\n",
+    "* 'h1n1_knowledge':&emsp; 0 = No knowledge&emsp;1 = A little knowledge&emsp; 2 = A lot of knowledge\n",
+    " \n",
+    "*  'health_worker'(binary):&emsp; 0 = no&emsp; 1 = yes\n",
+    "\n",
+    "\n",
+    "For complete information on the dataset:\n",
+    "https://www.drivendata.org/competitions/66/flu-shot-learning/page/211/"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Import Modules"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder\n",
+    "from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score\n",
+    "from sklearn.tree import DecisionTreeClassifier \n",
+    "from sklearn.neighbors import KNeighborsClassifier\n",
+    "from sklearn.ensemble import RandomForestClassifier\n",
+    "from xgboost import XGBClassifier\n",
+    "from imblearn.over_sampling import SMOTE\n",
+    "from sklearn.metrics import (confusion_matrix, roc_curve, auc, roc_auc_score,f1_score,\n",
+    "                             classification_report, plot_confusion_matrix, precision_recall_curve)\n",
+    "import matplotlib.pyplot as plt\n",
+    "%matplotlib inline\n",
+    "import seaborn as sns"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Define Functions"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<b>best_model()</b>\n",
+    "\n",
+    "The best_model function returns the best train test score combination based on the auc function, where\n",
+    "the difference between the test and the train scores represents the x axis, and test score represents\n",
+    "the y axis. In order use the auc function, for each x,y coordinate we created a list of length three,\n",
+    "with 0 and 1 at the ends, and the actual x,y values in the middle.\n",
+    "\n",
+    "The function takes as arguments(data derived from 'cv_results_' form gridsearch):\n",
+    "1. The type of model used. Will be returned as a string.\n",
+    "2. df1: The dataframe where the 'mean test scores' column, and the column containing the \n",
+    "   difference between the train and test scores are located.\n",
+    "3. df2: The dataframe with the column containing the model parameters(possibly the same). \n",
+    "\n",
+    "The function returns the following:\n",
+    "1. model type: returned as a string\n",
+    "2. best test score: the test score that corresponds to the best auc score\n",
+    "3. best score difference: the difference between the train and test scores\n",
+    "   that corresponds to the best auc score\n",
+    "4. best train-test combination score(auc): the greatest auc score using the \n",
+    "   'score difference' as the x values, and the 'test score' as the y values\n",
+    "5. best parameters: the model parameters that correspond to the best auc score\n",
+    "6. best dataframe row: the dataframe row in which the best auc score is found\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def best_model(model_type, df1, df2):\n",
+    "    from sklearn.metrics import auc\n",
+    "    \n",
+    "\n",
+    "#   creating 'test_scores' and 'score_diffs' zero populated lists of shape(rows,3) \n",
+    "    rows = len(df1)\n",
+    "    test_scores = np.zeros((rows, 3))\n",
+    "    score_diffs = np.zeros((rows, 3))\n",
+    "    auc_scores = []\n",
+    "\n",
+    "#   populating 'test_scores' and 'score_diffs' so each list has a format [0,test_score,1],\n",
+    "#   and [0,score_diff,1] respectively\n",
+    "    for row in range(rows):\n",
+    "        test_scores[row][1] = df1['mean_test_score'][row]\n",
+    "        test_scores[row][2] = 1\n",
+    "        score_diffs[row][1] = df1['score_dif'][row]\n",
+    "        score_diffs[row][2] = 1\n",
+    "\n",
+    "#   creating a list of all the auc scores\n",
+    "    for row in range(rows):\n",
+    "        auc_score = auc(score_diffs[row], test_scores[row])\n",
+    "        auc_scores.append(auc_score)\n",
+    "        \n",
+    "#   getting the greatest auc score, and the index number of that row    \n",
+    "    best_auc_score = max(auc_scores)\n",
+    "    best_score_index = auc_scores.index(best_auc_score)\n",
+    "    \n",
+    "\n",
+    "#   specifying what will be returned\n",
+    "    return (str(model_type), df1['mean_test_score'][best_score_index], df1['score_dif'][best_score_index],\n",
+    "            best_auc_score,df2['params'][best_score_index],best_score_index)\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<b>create_model_scores_df()</b>\n",
+    "\n",
+    "\n",
+    "The function takes as arguments:\n",
+    "1. A GridSearchCV object.\n",
+    " \n",
+    "The function returns the following:\n",
+    "1. A dataframe created from 'gridsearch_object'.cv_results_\n",
+    "2. A dataframe with all the mean test and mean train scores, as well as the difference between the respective scores."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def create_model_scores_df(gs_obj):\n",
+    "    \n",
+    "    # Creates a dataframe from gs_obj.cv_results_ dictionary:\n",
+    "    results_df = pd.DataFrame(gs_obj.cv_results_)\n",
+    "\n",
+    "    # adding new column:\n",
+    "    results_df['score_dif'] = abs(results_df['mean_train_score'] - results_df['mean_test_score'])\n",
+    "\n",
+    "    # creates new dataframe with only 'train','test' scores, and their difference:\n",
+    "    score_df = pd.DataFrame()\n",
+    "    score_df = results_df.loc[:,['mean_train_score','mean_test_score','score_dif']]\n",
+    "    \n",
+    "    # returns .cv_results df, and df with mean train/test scores and their difference:\n",
+    "    return results_df, score_df"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<b>print_scores()</b>\n",
+    "\n",
+    "\n",
+    "The function takes as arguments:\n",
+    "1. A GridSearchCV object.\n",
+    " \n",
+    "The function returns the following:\n",
+    "1. Prints the mean of the 'mean_train_score' column that is returned by 'GridSearchCV'.cv_results_ . \n",
+    "2. Prints the mean of the 'mean_test_score' column that is returned by 'GridSearchCV'.cv_results_ . "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def print_scores(gs_obj):\n",
+    "    \n",
+    "    # Mean training score\n",
+    "    gs_training_score = np.mean(gs_obj.cv_results_['mean_train_score'])\n",
+    "    \n",
+    "    # Mean test score\n",
+    "    gs_testing_score = np.mean(gs_obj.cv_results_['mean_test_score'])\n",
+    "    \n",
+    "    print(f\"Mean Training Score: {gs_training_score :.2%}\")\n",
+    "    print(f\"Mean Test Score: {gs_testing_score :.2%}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Importing Dataset"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#importing dataset\n",
+    "df = pd.read_csv('H1N1_Flu_Vaccines.csv')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "<class 'pandas.core.frame.DataFrame'>\n",
+      "RangeIndex: 26707 entries, 0 to 26706\n",
+      "Data columns (total 38 columns):\n",
+      " #   Column                       Non-Null Count  Dtype  \n",
+      "---  ------                       --------------  -----  \n",
+      " 0   respondent_id                26707 non-null  int64  \n",
+      " 1   h1n1_concern                 26615 non-null  float64\n",
+      " 2   h1n1_knowledge               26591 non-null  float64\n",
+      " 3   behavioral_antiviral_meds    26636 non-null  float64\n",
+      " 4   behavioral_avoidance         26499 non-null  float64\n",
+      " 5   behavioral_face_mask         26688 non-null  float64\n",
+      " 6   behavioral_wash_hands        26665 non-null  float64\n",
+      " 7   behavioral_large_gatherings  26620 non-null  float64\n",
+      " 8   behavioral_outside_home      26625 non-null  float64\n",
+      " 9   behavioral_touch_face        26579 non-null  float64\n",
+      " 10  doctor_recc_h1n1             24547 non-null  float64\n",
+      " 11  doctor_recc_seasonal         24547 non-null  float64\n",
+      " 12  chronic_med_condition        25736 non-null  float64\n",
+      " 13  child_under_6_months         25887 non-null  float64\n",
+      " 14  health_worker                25903 non-null  float64\n",
+      " 15  health_insurance             14433 non-null  float64\n",
+      " 16  opinion_h1n1_vacc_effective  26316 non-null  float64\n",
+      " 17  opinion_h1n1_risk            26319 non-null  float64\n",
+      " 18  opinion_h1n1_sick_from_vacc  26312 non-null  float64\n",
+      " 19  opinion_seas_vacc_effective  26245 non-null  float64\n",
+      " 20  opinion_seas_risk            26193 non-null  float64\n",
+      " 21  opinion_seas_sick_from_vacc  26170 non-null  float64\n",
+      " 22  age_group                    26707 non-null  object \n",
+      " 23  education                    25300 non-null  object \n",
+      " 24  race                         26707 non-null  object \n",
+      " 25  sex                          26707 non-null  object \n",
+      " 26  income_poverty               22284 non-null  object \n",
+      " 27  marital_status               25299 non-null  object \n",
+      " 28  rent_or_own                  24665 non-null  object \n",
+      " 29  employment_status            25244 non-null  object \n",
+      " 30  hhs_geo_region               26707 non-null  object \n",
+      " 31  census_msa                   26707 non-null  object \n",
+      " 32  household_adults             26458 non-null  float64\n",
+      " 33  household_children           26458 non-null  float64\n",
+      " 34  employment_industry          13377 non-null  object \n",
+      " 35  employment_occupation        13237 non-null  object \n",
+      " 36  h1n1_vaccine                 26707 non-null  int64  \n",
+      " 37  seasonal_vaccine             26707 non-null  int64  \n",
+      "dtypes: float64(23), int64(3), object(12)\n",
+      "memory usage: 7.7+ MB\n"
+     ]
+    }
+   ],
+   "source": [
+    "df.info()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>respondent_id</th>\n",
+       "      <th>h1n1_concern</th>\n",
+       "      <th>h1n1_knowledge</th>\n",
+       "      <th>behavioral_antiviral_meds</th>\n",
+       "      <th>behavioral_avoidance</th>\n",
+       "      <th>behavioral_face_mask</th>\n",
+       "      <th>behavioral_wash_hands</th>\n",
+       "      <th>behavioral_large_gatherings</th>\n",
+       "      <th>behavioral_outside_home</th>\n",
+       "      <th>behavioral_touch_face</th>\n",
+       "      <th>...</th>\n",
+       "      <th>rent_or_own</th>\n",
+       "      <th>employment_status</th>\n",
+       "      <th>hhs_geo_region</th>\n",
+       "      <th>census_msa</th>\n",
+       "      <th>household_adults</th>\n",
+       "      <th>household_children</th>\n",
+       "      <th>employment_industry</th>\n",
+       "      <th>employment_occupation</th>\n",
+       "      <th>h1n1_vaccine</th>\n",
+       "      <th>seasonal_vaccine</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>...</td>\n",
+       "      <td>Own</td>\n",
+       "      <td>Not in Labor Force</td>\n",
+       "      <td>oxchjgsf</td>\n",
+       "      <td>Non-MSA</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>NaN</td>\n",
+       "      <td>NaN</td>\n",
+       "      <td>0</td>\n",
+       "      <td>0</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>1</td>\n",
+       "      <td>3.0</td>\n",
+       "      <td>2.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>...</td>\n",
+       "      <td>Rent</td>\n",
+       "      <td>Employed</td>\n",
+       "      <td>bhuqouqj</td>\n",
+       "      <td>MSA, Not Principle  City</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>pxcmvdjn</td>\n",
+       "      <td>xgwztkwe</td>\n",
+       "      <td>0</td>\n",
+       "      <td>1</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>2</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>...</td>\n",
+       "      <td>Own</td>\n",
+       "      <td>Employed</td>\n",
+       "      <td>qufhixun</td>\n",
+       "      <td>MSA, Not Principle  City</td>\n",
+       "      <td>2.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>rucpziij</td>\n",
+       "      <td>xtkaffoo</td>\n",
+       "      <td>0</td>\n",
+       "      <td>0</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>3</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>...</td>\n",
+       "      <td>Rent</td>\n",
+       "      <td>Not in Labor Force</td>\n",
+       "      <td>lrircsnp</td>\n",
+       "      <td>MSA, Principle City</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>NaN</td>\n",
+       "      <td>NaN</td>\n",
+       "      <td>0</td>\n",
+       "      <td>1</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>4</td>\n",
+       "      <td>2.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>...</td>\n",
+       "      <td>Own</td>\n",
+       "      <td>Employed</td>\n",
+       "      <td>qufhixun</td>\n",
+       "      <td>MSA, Not Principle  City</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>wxleyezf</td>\n",
+       "      <td>emcorrxb</td>\n",
+       "      <td>0</td>\n",
+       "      <td>0</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "<p>5 rows × 38 columns</p>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "   respondent_id  h1n1_concern  h1n1_knowledge  behavioral_antiviral_meds  \\\n",
+       "0              0           1.0             0.0                        0.0   \n",
+       "1              1           3.0             2.0                        0.0   \n",
+       "2              2           1.0             1.0                        0.0   \n",
+       "3              3           1.0             1.0                        0.0   \n",
+       "4              4           2.0             1.0                        0.0   \n",
+       "\n",
+       "   behavioral_avoidance  behavioral_face_mask  behavioral_wash_hands  \\\n",
+       "0                   0.0                   0.0                    0.0   \n",
+       "1                   1.0                   0.0                    1.0   \n",
+       "2                   1.0                   0.0                    0.0   \n",
+       "3                   1.0                   0.0                    1.0   \n",
+       "4                   1.0                   0.0                    1.0   \n",
+       "\n",
+       "   behavioral_large_gatherings  behavioral_outside_home  \\\n",
+       "0                          0.0                      1.0   \n",
+       "1                          0.0                      1.0   \n",
+       "2                          0.0                      0.0   \n",
+       "3                          1.0                      0.0   \n",
+       "4                          1.0                      0.0   \n",
+       "\n",
+       "   behavioral_touch_face  ...  rent_or_own   employment_status  \\\n",
+       "0                    1.0  ...          Own  Not in Labor Force   \n",
+       "1                    1.0  ...         Rent            Employed   \n",
+       "2                    0.0  ...          Own            Employed   \n",
+       "3                    0.0  ...         Rent  Not in Labor Force   \n",
+       "4                    1.0  ...          Own            Employed   \n",
+       "\n",
+       "   hhs_geo_region                census_msa  household_adults  \\\n",
+       "0        oxchjgsf                   Non-MSA               0.0   \n",
+       "1        bhuqouqj  MSA, Not Principle  City               0.0   \n",
+       "2        qufhixun  MSA, Not Principle  City               2.0   \n",
+       "3        lrircsnp       MSA, Principle City               0.0   \n",
+       "4        qufhixun  MSA, Not Principle  City               1.0   \n",
+       "\n",
+       "   household_children  employment_industry  employment_occupation  \\\n",
+       "0                 0.0                  NaN                    NaN   \n",
+       "1                 0.0             pxcmvdjn               xgwztkwe   \n",
+       "2                 0.0             rucpziij               xtkaffoo   \n",
+       "3                 0.0                  NaN                    NaN   \n",
+       "4                 0.0             wxleyezf               emcorrxb   \n",
+       "\n",
+       "   h1n1_vaccine  seasonal_vaccine  \n",
+       "0             0                 0  \n",
+       "1             0                 1  \n",
+       "2             0                 0  \n",
+       "3             0                 1  \n",
+       "4             0                 0  \n",
+       "\n",
+       "[5 rows x 38 columns]"
+      ]
+     },
+     "execution_count": 7,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "df.head()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Raw Counts\n",
+      "0    21033\n",
+      "1     5674\n",
+      "Name: h1n1_vaccine, dtype: int64\n",
+      "\n",
+      "Percentages\n",
+      "0    0.787546\n",
+      "1    0.212454\n",
+      "Name: h1n1_vaccine, dtype: float64\n"
+     ]
+    }
+   ],
+   "source": [
+    "print(\"Raw Counts\")\n",
+    "print(df[\"h1n1_vaccine\"].value_counts())\n",
+    "print()\n",
+    "print(\"Percentages\")\n",
+    "print(df[\"h1n1_vaccine\"].value_counts(normalize=True))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "A naive model which simply chooses the majority class, would have an accuracy of over 78%.<br>\n",
+    "Since I am using the F1 score as a metric, the naive strategy would be to predict the minority class<br>\n",
+    "in all cases. In this case the recall =1, precision = .21, and the F1 score = .35.<br>\n",
+    "https://machinelearningmastery.com/naive-classifiers-imbalanced-classification-metrics/"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Preprocessing the Data:"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Dropping Features, Train-test-split, and Dealing with Missing Values: "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [],
+   "source": [
+    "#I will drop:\n",
+    "# 'respondent_id' - since it is a unique identifier\n",
+    "# 'employment_industry','employment_occupation','health_insurance' - about 50% or more records missing \n",
+    "df_II = df.drop(['respondent_id','employment_industry','employment_occupation','health_insurance'], axis=1)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Split df into X and y\n",
+    "X = df_II.drop(\"h1n1_vaccine\", axis=1)\n",
+    "y = df_II[\"h1n1_vaccine\"]\n",
+    "\n",
+    "# Perform train-test split with random_state=42 and stratify=y\n",
+    "# stratify y to maintain uniform ratios of dependent variable y\n",
+    "X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42, stratify=y)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [],
+   "source": [
+    "#impute values based on most common value in each column:\n",
+    "X_train = X_train.apply(lambda x:x.fillna(x.value_counts().index[0]))\n",
+    "X_test = X_test.apply(lambda x:x.fillna(x.value_counts().index[0]))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "0"
+      ]
+     },
+     "execution_count": 12,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "(X_train.values== None).sum()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "0"
+      ]
+     },
+     "execution_count": 13,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "(X_test.values== None).sum()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<b>There is now, no missing data in the training, and test datasets.</b>"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Pre-processing training data:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [],
+   "source": [
+    "# splitting dataframe between ordinals , categoricals, and nominals\n",
+    "X_train_ord =  X_train.iloc[:,np.r_[0:2,14:22,24]]\n",
+    "X_train_nom = X_train.iloc[:,30:32]\n",
+    "ord_cols = X_train_ord.columns\n",
+    "nom_cols = X_train_nom.columns\n",
+    "cols_to_drop = ord_cols.append(nom_cols)\n",
+    "X_train_cat = X_train.drop(cols_to_drop, axis=1)\n",
+    "X_train_ord_index = X_train_ord.index\n",
+    "X_train_cat_index = X_train_cat.index\n",
+    "\n",
+    "# I will convert all the columns in the dataset to string type, so I can then encode them:\n",
+    "X_train_ord = X_train_ord.astype(str)\n",
+    "X_train_cat = X_train_cat.astype(str)\n",
+    "\n",
+    "# creating a Encoder objects:\n",
+    "enc = OrdinalEncoder()\n",
+    "ohe = OneHotEncoder(categories=\"auto\", handle_unknown=\"ignore\", sparse=False)\n",
+    "\n",
+    "# fitting dataset to OneHotEncoder object:\n",
+    "X_train_enc = enc.fit_transform(X_train_ord)\n",
+    "X_train_ohe = ohe.fit_transform(X_train_cat)\n",
+    "\n",
+    "# creating an array with enc and ohe column names:\n",
+    "enc_col_names = X_train_ord.columns\n",
+    "ohe_col_names = ohe.get_feature_names(X_train_cat.columns)\n",
+    "\n",
+    "# Setting arrays back to dataframes\n",
+    "X_train_enc_df = pd.DataFrame(X_train_enc, columns=enc_col_names,index=X_train_ord_index)\n",
+    "X_train_ohe_df = pd.DataFrame(X_train_ohe, columns=ohe_col_names,index=X_train_cat_index)\n",
+    "\n",
+    "# putting the datframe back together:\n",
+    "X_train_II_encoded = pd.concat([X_train_enc_df,X_train_ohe_df,X_train_nom],axis=1)\n",
+    "X_train_II_encoded.head()\n",
+    "\n",
+    "# resampling with Smote *after some trial and error, I found .40 to be optimal:\n",
+    "X_train_II_encoded_resampled, y_train_resampled = SMOTE(sampling_strategy=0.40).fit_resample(X_train_II_encoded, y_train)\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Raw Counts\n",
+      "0    15775\n",
+      "1     6310\n",
+      "Name: h1n1_vaccine, dtype: int64\n",
+      "\n",
+      "Percentages\n",
+      "0    0.714286\n",
+      "1    0.285714\n",
+      "Name: h1n1_vaccine, dtype: float64\n"
+     ]
+    }
+   ],
+   "source": [
+    "# After applying SMOTE the minority class(1), is now 40% of the majority class (0): \n",
+    "print(\"Raw Counts\")\n",
+    "print(y_train_resampled.value_counts())\n",
+    "print()\n",
+    "print(\"Percentages\")\n",
+    "print(y_train_resampled.value_counts(normalize=True))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Pre-processing test data:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>h1n1_concern</th>\n",
+       "      <th>h1n1_knowledge</th>\n",
+       "      <th>opinion_h1n1_vacc_effective</th>\n",
+       "      <th>opinion_h1n1_risk</th>\n",
+       "      <th>opinion_h1n1_sick_from_vacc</th>\n",
+       "      <th>opinion_seas_vacc_effective</th>\n",
+       "      <th>opinion_seas_risk</th>\n",
+       "      <th>opinion_seas_sick_from_vacc</th>\n",
+       "      <th>age_group</th>\n",
+       "      <th>education</th>\n",
+       "      <th>...</th>\n",
+       "      <th>hhs_geo_region_mlyzmhmf</th>\n",
+       "      <th>hhs_geo_region_oxchjgsf</th>\n",
+       "      <th>hhs_geo_region_qufhixun</th>\n",
+       "      <th>census_msa_MSA, Not Principle  City</th>\n",
+       "      <th>census_msa_MSA, Principle City</th>\n",
+       "      <th>census_msa_Non-MSA</th>\n",
+       "      <th>seasonal_vaccine_0</th>\n",
+       "      <th>seasonal_vaccine_1</th>\n",
+       "      <th>household_adults</th>\n",
+       "      <th>household_children</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>12369</th>\n",
+       "      <td>3.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>3.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>3.0</td>\n",
+       "      <td>3.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>3.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>...</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>17593</th>\n",
+       "      <td>3.0</td>\n",
+       "      <td>2.0</td>\n",
+       "      <td>4.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>4.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>2.0</td>\n",
+       "      <td>...</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>2.0</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2698</th>\n",
+       "      <td>3.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>3.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>4.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>3.0</td>\n",
+       "      <td>...</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>2.0</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>13754</th>\n",
+       "      <td>2.0</td>\n",
+       "      <td>2.0</td>\n",
+       "      <td>3.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>3.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>3.0</td>\n",
+       "      <td>2.0</td>\n",
+       "      <td>...</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>7106</th>\n",
+       "      <td>2.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>2.0</td>\n",
+       "      <td>3.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>3.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>3.0</td>\n",
+       "      <td>...</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>3.0</td>\n",
+       "      <td>3.0</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "<p>5 rows × 65 columns</p>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "       h1n1_concern  h1n1_knowledge  opinion_h1n1_vacc_effective  \\\n",
+       "12369           3.0             1.0                          3.0   \n",
+       "17593           3.0             2.0                          4.0   \n",
+       "2698            3.0             1.0                          3.0   \n",
+       "13754           2.0             2.0                          3.0   \n",
+       "7106            2.0             1.0                          2.0   \n",
+       "\n",
+       "       opinion_h1n1_risk  opinion_h1n1_sick_from_vacc  \\\n",
+       "12369                0.0                          3.0   \n",
+       "17593                1.0                          0.0   \n",
+       "2698                 0.0                          1.0   \n",
+       "13754                1.0                          1.0   \n",
+       "7106                 3.0                          1.0   \n",
+       "\n",
+       "       opinion_seas_vacc_effective  opinion_seas_risk  \\\n",
+       "12369                          3.0                0.0   \n",
+       "17593                          4.0                1.0   \n",
+       "2698                           4.0                0.0   \n",
+       "13754                          3.0                1.0   \n",
+       "7106                           0.0                3.0   \n",
+       "\n",
+       "       opinion_seas_sick_from_vacc  age_group  education  ...  \\\n",
+       "12369                          1.0        3.0        0.0  ...   \n",
+       "17593                          0.0        1.0        2.0  ...   \n",
+       "2698                           0.0        0.0        3.0  ...   \n",
+       "13754                          1.0        3.0        2.0  ...   \n",
+       "7106                           1.0        0.0        3.0  ...   \n",
+       "\n",
+       "       hhs_geo_region_mlyzmhmf  hhs_geo_region_oxchjgsf  \\\n",
+       "12369                      0.0                      0.0   \n",
+       "17593                      1.0                      0.0   \n",
+       "2698                       0.0                      0.0   \n",
+       "13754                      0.0                      0.0   \n",
+       "7106                       0.0                      0.0   \n",
+       "\n",
+       "       hhs_geo_region_qufhixun  census_msa_MSA, Not Principle  City  \\\n",
+       "12369                      0.0                                  0.0   \n",
+       "17593                      0.0                                  1.0   \n",
+       "2698                       0.0                                  0.0   \n",
+       "13754                      0.0                                  0.0   \n",
+       "7106                       0.0                                  1.0   \n",
+       "\n",
+       "       census_msa_MSA, Principle City  census_msa_Non-MSA  seasonal_vaccine_0  \\\n",
+       "12369                             0.0                 1.0                 0.0   \n",
+       "17593                             0.0                 0.0                 0.0   \n",
+       "2698                              1.0                 0.0                 1.0   \n",
+       "13754                             1.0                 0.0                 1.0   \n",
+       "7106                              0.0                 0.0                 0.0   \n",
+       "\n",
+       "       seasonal_vaccine_1  household_adults  household_children  \n",
+       "12369                 1.0               0.0                 0.0  \n",
+       "17593                 1.0               1.0                 2.0  \n",
+       "2698                  0.0               1.0                 2.0  \n",
+       "13754                 0.0               1.0                 0.0  \n",
+       "7106                  1.0               3.0                 3.0  \n",
+       "\n",
+       "[5 rows x 65 columns]"
+      ]
+     },
+     "execution_count": 16,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# splitting dataframe between ordinals and categoricals\n",
+    "X_test_ord =  X_test.iloc[:,np.r_[0:2,14:22,24]]\n",
+    "X_test_nom = X_test.iloc[:,30:32]\n",
+    "ord_cols = X_test_ord.columns\n",
+    "nom_cols = X_test_nom.columns\n",
+    "cols_to_drop = ord_cols.append(nom_cols)\n",
+    "X_test_cat = X_test.drop(cols_to_drop, axis=1)\n",
+    "\n",
+    "# create index arrays to use when I recreate the dataframe\n",
+    "X_test_ord_index = X_test_ord.index\n",
+    "X_test_cat_index = X_test_cat.index\n",
+    "\n",
+    "# I will convert all the columns in the dataset to string type, so I can then encode them:\n",
+    "X_test_ord = X_test_ord.astype(str)\n",
+    "X_test_cat = X_test_cat.astype(str)\n",
+    "\n",
+    "# Setting arrays back to dataframes\n",
+    "X_test_enc_df = pd.DataFrame(enc.transform(X_test_ord), columns=enc_col_names,index=X_test_ord_index)\n",
+    "X_test_ohe_df = pd.DataFrame(ohe.transform(X_test_cat), columns=ohe_col_names,index=X_test_cat_index)\n",
+    "\n",
+    "#putting the datframe back together:\n",
+    "X_test_II_encoded = pd.concat([X_test_enc_df,X_test_ohe_df,X_test_nom],axis=1)\n",
+    "X_test_II_encoded.head()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Classification models:"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## K Nearest Neighbors (KNN)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### K Nearest Neighbors Baseline Model:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Mean Cross Validation Score: 64.25%\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Creating K nearest neighbor classifier object \n",
+    "knn = KNeighborsClassifier(n_jobs = -1)\n",
+    "\n",
+    "# using 2-split cross-validation to score the classification:\n",
+    "knn_cv_score = cross_val_score(knn, X_train_II_encoded_resampled, y_train_resampled, scoring=\"f1\", cv=2)\n",
+    "\n",
+    "# return the mean of the 2 f1 scores:\n",
+    "mean_knn_cv_score = np.mean(knn_cv_score)\n",
+    "print(f\"Mean Cross Validation Score: {mean_knn_cv_score :.2%}\")"
+   ]
+  },
+  {
+   "cell_type": "raw",
+   "metadata": {},
+   "source": [
+    "The model did significantly better than the naive strategy (~29% better)."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Using GridSearchCV to create additional KNN models:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Define the parameter grid:\n",
+    "\n",
+    "knn_param_grid = {\n",
+    "    'n_neighbors': [5,12,20],\n",
+    "    'metric'     : ['minkowski'],\n",
+    "    'p'          : [1,2,3,4]\n",
+    "    \n",
+    "}"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 19,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# instantiate GridSearchCV object:\n",
+    "knn_grid_search = GridSearchCV(knn, knn_param_grid, cv=2, scoring='f1',return_train_score=True, n_jobs = -1)\n",
+    "\n",
+    "# fit to the data:\n",
+    "knn_grid_search.fit(X_train_II_encoded_resampled, y_train_resampled);"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 20,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Mean Training Score: 66.53%\n",
+      "Mean Test Score: 60.27%\n"
+     ]
+    }
+   ],
+   "source": [
+    "print_scores(knn_grid_search)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 21,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>mean_train_score</th>\n",
+       "      <th>mean_test_score</th>\n",
+       "      <th>score_dif</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>count</th>\n",
+       "      <td>12.000000</td>\n",
+       "      <td>12.000000</td>\n",
+       "      <td>12.000000</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>mean</th>\n",
+       "      <td>0.665257</td>\n",
+       "      <td>0.602737</td>\n",
+       "      <td>0.062520</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>std</th>\n",
+       "      <td>0.050227</td>\n",
+       "      <td>0.024164</td>\n",
+       "      <td>0.030149</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>min</th>\n",
+       "      <td>0.604367</td>\n",
+       "      <td>0.572386</td>\n",
+       "      <td>0.031194</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>25%</th>\n",
+       "      <td>0.630487</td>\n",
+       "      <td>0.583292</td>\n",
+       "      <td>0.038325</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>50%</th>\n",
+       "      <td>0.647757</td>\n",
+       "      <td>0.600857</td>\n",
+       "      <td>0.051244</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>75%</th>\n",
+       "      <td>0.706312</td>\n",
+       "      <td>0.623303</td>\n",
+       "      <td>0.083009</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>max</th>\n",
+       "      <td>0.756788</td>\n",
+       "      <td>0.642510</td>\n",
+       "      <td>0.125371</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "       mean_train_score  mean_test_score  score_dif\n",
+       "count         12.000000        12.000000  12.000000\n",
+       "mean           0.665257         0.602737   0.062520\n",
+       "std            0.050227         0.024164   0.030149\n",
+       "min            0.604367         0.572386   0.031194\n",
+       "25%            0.630487         0.583292   0.038325\n",
+       "50%            0.647757         0.600857   0.051244\n",
+       "75%            0.706312         0.623303   0.083009\n",
+       "max            0.756788         0.642510   0.125371"
+      ]
+     },
+     "execution_count": 21,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "knn_results_df, knn_score_df =  create_model_scores_df(knn_grid_search)\n",
+    "knn_score_df.describe()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Decision Trees"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Decision Tree Baseline Model:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Mean Cross Validation Score: 59.97%\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Creating decision tree classifier object\n",
+    "dec_tree = DecisionTreeClassifier(random_state=42)\n",
+    "\n",
+    "# using 2-split cross-validation to score the classification:\n",
+    "dec_tree_cv_score = cross_val_score(dec_tree, X_train_II_encoded_resampled, y_train_resampled, cv=2,scoring='f1')\n",
+    "\n",
+    "# return the mean of the 2 f1 scores:\n",
+    "mean_dec_tree_cv_score = np.mean(dec_tree_cv_score)\n",
+    "print(f\"Mean Cross Validation Score: {mean_dec_tree_cv_score :.2%}\")"
+   ]
+  },
+  {
+   "cell_type": "raw",
+   "metadata": {},
+   "source": [
+    "The model did significantly better than the naive strategy (~25% better)."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Using GridSearchCV to create additional Decision Tree models:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 23,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Define the parameter grid:\n",
+    "\n",
+    "dec_tree_param_grid = {\n",
+    "    'criterion'        : ['gini', 'entropy'],\n",
+    "    'max_depth'        : [None,5,6, 7, 8],\n",
+    "    'min_samples_split': [2,3,5],\n",
+    "    'min_samples_leaf' : [1, 2, 3, 4, 5, 6],\n",
+    "    'class_weight'     : [None, 'balanced']\n",
+    "}"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 24,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# instantiate GridSearchCV object:\n",
+    "dec_tree_grid_search = GridSearchCV(dec_tree, dec_tree_param_grid, cv=2, return_train_score=True, \n",
+    "                                    scoring='f1', n_jobs = -1)\n",
+    "\n",
+    "# fit to the data:\n",
+    "dec_tree_grid_search.fit(X_train_II_encoded_resampled, y_train_resampled);"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 25,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Mean Training Score: 76.41%\n",
+      "Mean Test Score: 64.46%\n"
+     ]
+    }
+   ],
+   "source": [
+    "print_scores(dec_tree_grid_search)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 26,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>mean_train_score</th>\n",
+       "      <th>mean_test_score</th>\n",
+       "      <th>score_dif</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>count</th>\n",
+       "      <td>360.000000</td>\n",
+       "      <td>360.000000</td>\n",
+       "      <td>360.000000</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>mean</th>\n",
+       "      <td>0.764078</td>\n",
+       "      <td>0.644628</td>\n",
+       "      <td>0.119450</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>std</th>\n",
+       "      <td>0.072150</td>\n",
+       "      <td>0.030283</td>\n",
+       "      <td>0.092186</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>min</th>\n",
+       "      <td>0.704600</td>\n",
+       "      <td>0.581847</td>\n",
+       "      <td>0.035821</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>25%</th>\n",
+       "      <td>0.719104</td>\n",
+       "      <td>0.622951</td>\n",
+       "      <td>0.056979</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>50%</th>\n",
+       "      <td>0.737269</td>\n",
+       "      <td>0.642783</td>\n",
+       "      <td>0.089520</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>75%</th>\n",
+       "      <td>0.757180</td>\n",
+       "      <td>0.677325</td>\n",
+       "      <td>0.120966</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>max</th>\n",
+       "      <td>1.000000</td>\n",
+       "      <td>0.681044</td>\n",
+       "      <td>0.400251</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "       mean_train_score  mean_test_score   score_dif\n",
+       "count        360.000000       360.000000  360.000000\n",
+       "mean           0.764078         0.644628    0.119450\n",
+       "std            0.072150         0.030283    0.092186\n",
+       "min            0.704600         0.581847    0.035821\n",
+       "25%            0.719104         0.622951    0.056979\n",
+       "50%            0.737269         0.642783    0.089520\n",
+       "75%            0.757180         0.677325    0.120966\n",
+       "max            1.000000         0.681044    0.400251"
+      ]
+     },
+     "execution_count": 26,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "dec_tree_results_df, dec_tree_score_df =  create_model_scores_df(dec_tree_grid_search)\n",
+    "dec_tree_score_df.describe()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Random Forests"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Random Forest Baseline Model:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 27,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Mean Cross Validation Score: 66.97%\n"
+     ]
+    }
+   ],
+   "source": [
+    "# creating random forest classifier object:\n",
+    "forest = RandomForestClassifier(n_jobs = -1,random_state=42)\n",
+    "\n",
+    "# using 2-split cross-validation to score the classification:\n",
+    "forest_cv_score = cross_val_score(forest, X_train_II_encoded_resampled, y_train_resampled, cv=2,scoring='f1')\n",
+    "\n",
+    "# return the mean of the 2 f1 scores:\n",
+    "mean_forest_cv_score = np.mean(forest_cv_score)\n",
+    "print(f\"Mean Cross Validation Score: {mean_forest_cv_score :.2%}\")"
+   ]
+  },
+  {
+   "cell_type": "raw",
+   "metadata": {},
+   "source": [
+    "The model did significantly better than the naive strategy (~32% better)."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Using GridSearchCV to create additional Random Forests:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 28,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Define the parameter grid:\n",
+    "\n",
+    "forest_param_grid = {\n",
+    "              'criterion'        : ['gini', 'entropy'],\n",
+    "              'max_depth'        : [None, 4,5,6,8],\n",
+    "              'min_samples_split': [2,3,4,6],\n",
+    "              'max_features'     : [15, 20, 28, 32, 'auto'],\n",
+    "             'class_weight'      : [None, 'balanced'],\n",
+    "              'n_estimators'     : [100, 150]\n",
+    "         \n",
+    "}"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 29,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Instantiate GridSearchCV object:\n",
+    "forest_grid_search = GridSearchCV(forest, forest_param_grid, cv=2, return_train_score=True,\n",
+    "                                  scoring='f1', n_jobs = -1)\n",
+    "\n",
+    "# Fit to the data:\n",
+    "forest_grid_search.fit(X_train_II_encoded_resampled, y_train_resampled);"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 30,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Mean Training Score: 78.20%\n",
+      "Mean Test Score: 66.50%\n"
+     ]
+    }
+   ],
+   "source": [
+    "print_scores(forest_grid_search)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 31,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>mean_train_score</th>\n",
+       "      <th>mean_test_score</th>\n",
+       "      <th>score_dif</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>count</th>\n",
+       "      <td>800.000000</td>\n",
+       "      <td>800.000000</td>\n",
+       "      <td>800.000000</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>mean</th>\n",
+       "      <td>0.781959</td>\n",
+       "      <td>0.664957</td>\n",
+       "      <td>0.117002</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>std</th>\n",
+       "      <td>0.108102</td>\n",
+       "      <td>0.032524</td>\n",
+       "      <td>0.103550</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>min</th>\n",
+       "      <td>0.633251</td>\n",
+       "      <td>0.575049</td>\n",
+       "      <td>0.021756</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>25%</th>\n",
+       "      <td>0.714461</td>\n",
+       "      <td>0.643732</td>\n",
+       "      <td>0.048471</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>50%</th>\n",
+       "      <td>0.740277</td>\n",
+       "      <td>0.672159</td>\n",
+       "      <td>0.077062</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>75%</th>\n",
+       "      <td>0.782008</td>\n",
+       "      <td>0.694435</td>\n",
+       "      <td>0.123994</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>max</th>\n",
+       "      <td>1.000000</td>\n",
+       "      <td>0.706458</td>\n",
+       "      <td>0.341107</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "       mean_train_score  mean_test_score   score_dif\n",
+       "count        800.000000       800.000000  800.000000\n",
+       "mean           0.781959         0.664957    0.117002\n",
+       "std            0.108102         0.032524    0.103550\n",
+       "min            0.633251         0.575049    0.021756\n",
+       "25%            0.714461         0.643732    0.048471\n",
+       "50%            0.740277         0.672159    0.077062\n",
+       "75%            0.782008         0.694435    0.123994\n",
+       "max            1.000000         0.706458    0.341107"
+      ]
+     },
+     "execution_count": 31,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "forest_results_df, forest_score_df =  create_model_scores_df(forest_grid_search)\n",
+    "forest_score_df.describe()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## XGBoost"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 32,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Creating new dataframes with 2 column names modified so they work with XGBoost(prevent error):\n",
+    "\n",
+    "X_train_III_encoded = X_train_II_encoded_resampled.rename(columns={'education_< 12 Years': 'education less than 12 Years', \n",
+    "                                                         'income_poverty_<= $75,000, Above Poverty':\n",
+    "                                                         'income_poverty less than or = to $75000_Above Poverty'})\n",
+    "X_test_III_encoded = X_test_II_encoded.rename(columns={'education_< 12 Years': 'education less than 12 Years', \n",
+    "                                                         'income_poverty_<= $75,000, Above Poverty':\n",
+    "                                                         'income_poverty less than or = to $75000_Above Poverty'})"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### XGBoost Baseline Model:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 33,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Mean Cross Validation Score: 61.87%\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Creating XGBoost classifier object:\n",
+    "xgboost_clf = XGBClassifier(random_state=42, n_jobs = -1)\n",
+    "\n",
+    "# using 2-split cross-validation to score the classification:\n",
+    "xgboost_clf_cv_score = cross_val_score(xgboost_clf, X_train_II_encoded_resampled, y_train_resampled,\n",
+    "                                       cv=2, scoring='f1')\n",
+    "\n",
+    "# return the mean of the 2 f1 scores:\n",
+    "mean_xgboost_clf_cv_score = np.mean(xgboost_clf_cv_score)\n",
+    "print(f\"Mean Cross Validation Score: {mean_xgboost_clf_cv_score :.2%}\")"
+   ]
+  },
+  {
+   "cell_type": "raw",
+   "metadata": {},
+   "source": [
+    "The model did significantly better than the naive strategy (~27% better)."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Using GridSearchCV to create additional XGBoost Classifiers:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 34,
+   "metadata": {
+    "scrolled": false
+   },
+   "outputs": [],
+   "source": [
+    "# Define the parameter grid:\n",
+    "\n",
+    "xgboost_param_grid = {\n",
+    "    'learning_rate': [None, .08, .1],\n",
+    "    'max_depth': [None, 4, 5, 6 ],\n",
+    "    'min_child_weight': [1, 2, 3],\n",
+    "    'subsample': [0.65, 1],\n",
+    "    'min_split_loss' : [0, .5],\n",
+    "    'n_estimators' : [100, 160],\n",
+    "    'reg_alpha':[None, .5,],\n",
+    "    'scale_pos_weight' : [None, 3.0]\n",
+    "    \n",
+    "}"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 35,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Instantiate GridSearchCV object:\n",
+    "xgboost_clf_grid_search = GridSearchCV(xgboost_clf, xgboost_param_grid, cv=2, return_train_score=True,\n",
+    "                                  scoring='f1', n_jobs = -1)\n",
+    "\n",
+    "# Fit to the data\n",
+    "xgboost_clf_grid_search.fit(X_train_II_encoded_resampled, y_train_resampled);"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 36,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Mean Training Score: 85.54%\n",
+      "Mean Test Score: 65.10%\n"
+     ]
+    }
+   ],
+   "source": [
+    "print_scores(xgboost_clf_grid_search)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 37,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>mean_train_score</th>\n",
+       "      <th>mean_test_score</th>\n",
+       "      <th>score_dif</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>count</th>\n",
+       "      <td>1152.000000</td>\n",
+       "      <td>1152.000000</td>\n",
+       "      <td>1152.000000</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>mean</th>\n",
+       "      <td>0.855379</td>\n",
+       "      <td>0.650966</td>\n",
+       "      <td>0.204413</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>std</th>\n",
+       "      <td>0.055425</td>\n",
+       "      <td>0.035457</td>\n",
+       "      <td>0.068031</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>min</th>\n",
+       "      <td>0.772658</td>\n",
+       "      <td>0.601400</td>\n",
+       "      <td>0.076812</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>25%</th>\n",
+       "      <td>0.814617</td>\n",
+       "      <td>0.617538</td>\n",
+       "      <td>0.152056</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>50%</th>\n",
+       "      <td>0.842512</td>\n",
+       "      <td>0.642678</td>\n",
+       "      <td>0.200486</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>75%</th>\n",
+       "      <td>0.884796</td>\n",
+       "      <td>0.691933</td>\n",
+       "      <td>0.255576</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>max</th>\n",
+       "      <td>0.980510</td>\n",
+       "      <td>0.699888</td>\n",
+       "      <td>0.358511</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "       mean_train_score  mean_test_score    score_dif\n",
+       "count       1152.000000      1152.000000  1152.000000\n",
+       "mean           0.855379         0.650966     0.204413\n",
+       "std            0.055425         0.035457     0.068031\n",
+       "min            0.772658         0.601400     0.076812\n",
+       "25%            0.814617         0.617538     0.152056\n",
+       "50%            0.842512         0.642678     0.200486\n",
+       "75%            0.884796         0.691933     0.255576\n",
+       "max            0.980510         0.699888     0.358511"
+      ]
+     },
+     "execution_count": 37,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "xgboost_results_df, xgboost_score_df =  create_model_scores_df(xgboost_clf_grid_search)\n",
+    "xgboost_score_df.describe()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Choosing the Best Model:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 38,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>model type</th>\n",
+       "      <th>best test score(f1)</th>\n",
+       "      <th>best score difference</th>\n",
+       "      <th>best train-test combination score(auc)</th>\n",
+       "      <th>best parameters</th>\n",
+       "      <th>best dataframe row</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>knn</td>\n",
+       "      <td>0.609157</td>\n",
+       "      <td>0.031194</td>\n",
+       "      <td>0.788981</td>\n",
+       "      <td>{'metric': 'minkowski', 'n_neighbors': 20, 'p': 2}</td>\n",
+       "      <td>9</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>decsion tree</td>\n",
+       "      <td>0.678102</td>\n",
+       "      <td>0.035821</td>\n",
+       "      <td>0.821140</td>\n",
+       "      <td>{'class_weight': 'balanced', 'criterion': 'entropy', 'max_depth': 6, 'min_samples_leaf': 6, 'min_samples_split': 2}</td>\n",
+       "      <td>321</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>random forest</td>\n",
+       "      <td>0.693300</td>\n",
+       "      <td>0.027650</td>\n",
+       "      <td>0.832825</td>\n",
+       "      <td>{'class_weight': 'balanced', 'criterion': 'entropy', 'max_depth': 4, 'max_features': 20, 'min_samples_split': 2, 'n_estimators': 100}</td>\n",
+       "      <td>648</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>xgboost</td>\n",
+       "      <td>0.695846</td>\n",
+       "      <td>0.076812</td>\n",
+       "      <td>0.809517</td>\n",
+       "      <td>{'learning_rate': 0.08, 'max_depth': 4, 'min_child_weight': 3, 'min_split_loss': 0, 'n_estimators': 100, 'reg_alpha': 0.5, 'scale_pos_weight': 3.0, 'subsample': 1}</td>\n",
+       "      <td>551</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "      model type  best test score(f1)  best score difference  \\\n",
+       "0            knn             0.609157               0.031194   \n",
+       "1   decsion tree             0.678102               0.035821   \n",
+       "2  random forest             0.693300               0.027650   \n",
+       "3        xgboost             0.695846               0.076812   \n",
+       "\n",
+       "   best train-test combination score(auc)  \\\n",
+       "0                                0.788981   \n",
+       "1                                0.821140   \n",
+       "2                                0.832825   \n",
+       "3                                0.809517   \n",
+       "\n",
+       "                                                                                                                                                       best parameters  \\\n",
+       "0                                                                                                                   {'metric': 'minkowski', 'n_neighbors': 20, 'p': 2}   \n",
+       "1                                                  {'class_weight': 'balanced', 'criterion': 'entropy', 'max_depth': 6, 'min_samples_leaf': 6, 'min_samples_split': 2}   \n",
+       "2                                {'class_weight': 'balanced', 'criterion': 'entropy', 'max_depth': 4, 'max_features': 20, 'min_samples_split': 2, 'n_estimators': 100}   \n",
+       "3  {'learning_rate': 0.08, 'max_depth': 4, 'min_child_weight': 3, 'min_split_loss': 0, 'n_estimators': 100, 'reg_alpha': 0.5, 'scale_pos_weight': 3.0, 'subsample': 1}   \n",
+       "\n",
+       "   best dataframe row  \n",
+       "0                   9  \n",
+       "1                 321  \n",
+       "2                 648  \n",
+       "3                 551  "
+      ]
+     },
+     "execution_count": 38,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "#Creating a dataframe to compare models\n",
+    "\n",
+    "#creating list of arguments for the 'best_model' function\n",
+    "best_model_args = [['knn', knn_score_df, knn_results_df],\n",
+    "                   ['decsion tree', dec_tree_score_df, dec_tree_results_df],\n",
+    "                   ['random forest', forest_score_df, forest_results_df],\n",
+    "                   ['xgboost', xgboost_score_df, xgboost_results_df]]\n",
+    "\n",
+    "\n",
+    "# loop counter representing the 4 sets of arguments for the 'best_model' function\n",
+    "counter = 0\n",
+    "# this list will hold the stats for each model\n",
+    "model_stats_list = []\n",
+    "# column names used to create the dataframe\n",
+    "model_stats_df_cols = ['model type','best test score(f1)','best score difference',\n",
+    "                      'best train-test combination score(auc)','best parameters',\n",
+    "                      'best dataframe row']\n",
+    "\n",
+    "# loop used to populate 'model_stats_list'\n",
+    "while counter <4:\n",
+    "    args = best_model_args[counter]\n",
+    "    model_stats = best_model(args[0],args[1],args[2])\n",
+    "    model_stats_list.append(model_stats)\n",
+    "    counter+=1\n",
+    "\n",
+    "# creating dataframe from the 'model_stats_list'\n",
+    "model_stats_df = pd.DataFrame(model_stats_list, columns=model_stats_df_cols)\n",
+    "pd.set_option('display.max_colwidth', None)\n",
+    "model_stats_df   "
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The best model, based on the auc metric (0.831498) is random Forest, with an F1 test score of 0.694205.\t"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Recreating the  the Best Model:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 39,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "0.6248208655775294"
+      ]
+     },
+     "execution_count": 39,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Instantiate a RandomForestClassifier object:\n",
+    "best_forest = RandomForestClassifier(class_weight = 'balanced', criterion = 'gini', max_depth = 5,\n",
+    "                                      max_features = 32, min_samples_split = 2, n_estimators = 150,\n",
+    "                                      random_state = 42, n_jobs = -1)\n",
+    "\n",
+    "# Fit data to the RandomForestClassifier object:\n",
+    "best_forest.fit(X_train_II_encoded_resampled, y_train_resampled)\n",
+    "best_forest_preds = best_forest.predict(X_test_II_encoded)\n",
+    "\n",
+    "#Returns the f1 score on the given test data and labels:\n",
+    "score = f1_score(y_test, best_forest_preds)\n",
+    "score"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 40,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "image/png": "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\n",
+      "text/plain": [
+       "<Figure size 432x288 with 2 Axes>"
+      ]
+     },
+     "metadata": {
+      "needs_background": "light"
+     },
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# Visualize your confusion matrix\n",
+    "plot_confusion_matrix(best_forest, X_test_II_encoded, y_test,\n",
+    "                     cmap=plt.cm.Blues)\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Finding best threshold to optimize F1 score:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 41,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [],
+   "source": [
+    "yhat = best_forest.predict_proba(X_test_II_encoded)\n",
+    "# keep probabilities for the positive outcome only\n",
+    "yhat = yhat[:, 1]\n",
+    "\n",
+    "# function returns three np. arrays: precison, recall, and thresholds\n",
+    "precision, recall, thresholds = precision_recall_curve(y_test, yhat)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 42,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#creating 'prc_arr' 2d array, by appending precison', 'recall', 'thresholds':\n",
+    "n = 0\n",
+    "prc_arr = []\n",
+    "while n < len (thresholds):\n",
+    "    prc_return = []\n",
+    "    prc_return.append(precision[n])\n",
+    "    prc_return.append(recall[n])\n",
+    "    prc_return.append(thresholds[n])\n",
+    "    prc_arr.append(prc_return)\n",
+    "    n+=1"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 43,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>precision</th>\n",
+       "      <th>recall</th>\n",
+       "      <th>thresholds</th>\n",
+       "      <th>f_score</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>4083</th>\n",
+       "      <td>0.601083</td>\n",
+       "      <td>0.704017</td>\n",
+       "      <td>0.572292</td>\n",
+       "      <td>0.648491</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4082</th>\n",
+       "      <td>0.600361</td>\n",
+       "      <td>0.704017</td>\n",
+       "      <td>0.572292</td>\n",
+       "      <td>0.648070</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4080</th>\n",
+       "      <td>0.599520</td>\n",
+       "      <td>0.704722</td>\n",
+       "      <td>0.572042</td>\n",
+       "      <td>0.647878</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4066</th>\n",
+       "      <td>0.594007</td>\n",
+       "      <td>0.712474</td>\n",
+       "      <td>0.569533</td>\n",
+       "      <td>0.647869</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4077</th>\n",
+       "      <td>0.598684</td>\n",
+       "      <td>0.705426</td>\n",
+       "      <td>0.571355</td>\n",
+       "      <td>0.647687</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>...</th>\n",
+       "      <td>...</td>\n",
+       "      <td>...</td>\n",
+       "      <td>...</td>\n",
+       "      <td>...</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>5400</th>\n",
+       "      <td>0.800000</td>\n",
+       "      <td>0.002819</td>\n",
+       "      <td>0.942297</td>\n",
+       "      <td>0.005618</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>5401</th>\n",
+       "      <td>0.750000</td>\n",
+       "      <td>0.002114</td>\n",
+       "      <td>0.942632</td>\n",
+       "      <td>0.004216</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>5402</th>\n",
+       "      <td>0.666667</td>\n",
+       "      <td>0.001409</td>\n",
+       "      <td>0.942718</td>\n",
+       "      <td>0.002813</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>5403</th>\n",
+       "      <td>0.500000</td>\n",
+       "      <td>0.000705</td>\n",
+       "      <td>0.944219</td>\n",
+       "      <td>0.001407</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>5404</th>\n",
+       "      <td>0.000000</td>\n",
+       "      <td>0.000000</td>\n",
+       "      <td>0.944724</td>\n",
+       "      <td>NaN</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "<p>5405 rows × 4 columns</p>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "      precision    recall  thresholds   f_score\n",
+       "4083   0.601083  0.704017    0.572292  0.648491\n",
+       "4082   0.600361  0.704017    0.572292  0.648070\n",
+       "4080   0.599520  0.704722    0.572042  0.647878\n",
+       "4066   0.594007  0.712474    0.569533  0.647869\n",
+       "4077   0.598684  0.705426    0.571355  0.647687\n",
+       "...         ...       ...         ...       ...\n",
+       "5400   0.800000  0.002819    0.942297  0.005618\n",
+       "5401   0.750000  0.002114    0.942632  0.004216\n",
+       "5402   0.666667  0.001409    0.942718  0.002813\n",
+       "5403   0.500000  0.000705    0.944219  0.001407\n",
+       "5404   0.000000  0.000000    0.944724       NaN\n",
+       "\n",
+       "[5405 rows x 4 columns]"
+      ]
+     },
+     "execution_count": 43,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# creating column names list:\n",
+    "f_score_df_col_names = ['precision', 'recall', 'thresholds']\n",
+    "\n",
+    "# converting 'prc_arr' to a dataframe:\n",
+    "f_scores_df = pd.DataFrame(prc_arr, columns=f_score_df_col_names)\n",
+    "\n",
+    "# creating a new column that calculates the f-score:\n",
+    "f_scores_df['f_score'] = ((2 * f_scores_df['precision'] * f_scores_df['recall']) /\n",
+    "                         (f_scores_df['precision'] + f_scores_df['recall']))\n",
+    "\n",
+    "# sort descending by f_score:\n",
+    "f_scores_df = f_scores_df.sort_values(by='f_score', ascending=False)\n",
+    "f_scores_df"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<b>Based on an optimal threshold of 0.571795 our final f1 score is 0.646012<b>"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Obtain most important features"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 44,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "<class 'pandas.core.frame.DataFrame'>\n",
+      "Int64Index: 65 entries, 12 to 61\n",
+      "Data columns (total 2 columns):\n",
+      " #   Column          Non-Null Count  Dtype \n",
+      "---  ------          --------------  ----- \n",
+      " 0   ftr_name        65 non-null     object\n",
+      " 1   ftr_importance  65 non-null     object\n",
+      "dtypes: object(2)\n",
+      "memory usage: 1.5+ KB\n"
+     ]
+    }
+   ],
+   "source": [
+    "# creating a 'ftr_importance' array:\n",
+    "ftr_importance = np.array(best_forest.feature_importances_)\n",
+    "\n",
+    "# creating a 'ftr_names' array:\n",
+    "ftr_names = np.array(X_train_II_encoded.columns)\n",
+    "\n",
+    "# putting the two arrays together to create a 2d dataframe:\n",
+    "ftr_importance_arr = np.vstack((ftr_names, ftr_importance)).T\n",
+    "\n",
+    "# creating column names list for dataframe:\n",
+    "col_names = ['ftr_name', 'ftr_importance']\n",
+    "\n",
+    "# converting 'ftr_importance_arr' into a dataframe and sorting by feature importance:\n",
+    "ftr_importance_df = pd.DataFrame(ftr_importance_arr, columns=col_names).sort_values(\n",
+    "    by='ftr_importance')\n",
+    "\n",
+    "pd.set_option('display.max_rows', None)\n",
+    "ftr_importance_df.info()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 45,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "0.9938804149155822"
+      ]
+     },
+     "execution_count": 45,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# create an abridged dataframe that contributes at least 0.0001 towards 'gini' reduction:\n",
+    "ftr_importance_df_II = ftr_importance_df.loc[ftr_importance_df['ftr_importance']>=0.0005]\n",
+    "ftr_importance_df_II = ftr_importance_df_II.reset_index(drop=True)\n",
+    "ftr_importance_df_II['ftr_importance'].sum()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 46,
+   "metadata": {
+    "scrolled": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "image/png": "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\n",
+      "text/plain": [
+       "<Figure size 864x864 with 1 Axes>"
+      ]
+     },
+     "metadata": {
+      "needs_background": "light"
+     },
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "def plot_feature_importances(model):\n",
+    "    n_features = model.shape[0]\n",
+    "    plt.figure(figsize=(12,12))\n",
+    "    plt.barh(range(n_features), model['ftr_importance'], align='center') \n",
+    "    plt.yticks(np.arange(n_features), model['ftr_name']) \n",
+    "    plt.xlabel('Feature importance')\n",
+    "    plt.ylabel('Feature')\n",
+    "\n",
+    "plot_feature_importances(ftr_importance_df_II)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Recommendations"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<b>metric</b>: F1 score\n",
+    "\n",
+    "<b>model</b>: Random Forest\n",
+    "\n",
+    "<b>model parameters</b>: class_weight = 'balanced', criterion = 'gini', max_depth = 5,<br>\n",
+    "                         max_features = 32, min_samples_split = 2, n_estimators = 150,<br>\n",
+    "                         random_state = 42, n_jobs = -1<br>\n",
+    "                              \n",
+    "<b>how to handle class imbalance</b> &emsp;: SMOTE(sampling_strategy=0.40) \n",
+    "\n",
+    "<b>Recommend to place a special emphasis on the following features, since they account for more\n",
+    "than 99% of total feature importance metric (decrease in the gini impurity score):</b>\n",
+    "* race_White\n",
+    "* opinion_h1n1_sick_from_vacc\n",
+    "* employment_status_Employed\n",
+    "* opinion_seas_sick_from_vacc\n",
+    "* h1n1_knowledge\n",
+    "* age_group\n",
+    "* race_Black\n",
+    "* h1n1_concern\n",
+    "* opinion_seas_vacc_effective\n",
+    "* opinion_seas_risk\n",
+    "* health_worker_0.0\n",
+    "* health_worker_1.0\n",
+    "* doctor_recc_seasonal_1.0\n",
+    "* opinion_h1n1_risk\n",
+    "* doctor_recc_seasonal_0.0\n",
+    "* opinion_h1n1_vacc_effective\n",
+    "* doctor_recc_h1n1_1.0\n",
+    "* doctor_recc_h1n1_0.0\n",
+    "* seasonal_vaccine_1\n",
+    "* seasonal_vaccine_0\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Project Conclusion: Main Take-aways"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "1. This project helped me appreciate that there a few things that should be done prior to working with the models:\n",
+    "       1. Clearly define a question, or goal that would be resolved by the model.\n",
+    "       2. Choose a metric that would best measure the success of your model,as it pertains to your goal.\n",
+    "       3. Try to define a naive strategy, and its success rate, so you have something to compare your model to.\n",
+    "\n",
+    "\n",
+    "2. My goal in this project was to create a model that would identify, as correctly as possible, who will, and who won't take the h1n1 vaccine. My prediction results could be categorized as any of the following four:    \n",
+    "       1. True positive: The respondent was predicted to have taken the vaccine, and actually took it.\n",
+    "       2. True negative: The respondent was predicted not to have taken the vaccine, and did not take it.\n",
+    "       3. False positive: The respondent was predicted to have taken the vaccine, but did not take it.\n",
+    "       4. False negative: The respondent was predicted to not have taken the vaccine, but actually took it.\n",
+    "\n",
+    "Given that my goal is to be as 'accurate' as possible, there is no upside in identifying one class more aggresively than the other. I chose the F1 metric because it does a good job of minimizing false positives, and false negatives on an imbalanced data set. \n",
+    "\n",
+    "3. I used the auc function to determine the best train/test score combination. I set the difference between the train and the test scores as the x axis, and the test score itself as the y axis. Based on this the Random Forest model was the best.\n",
+    "\n",
+    "4. I found the optimal threshold using the precision recall curve to obtain the best possible F1 score for that model.\n",
+    "\n",
+    "5. I thought of using a voting classifier, but I decided against it because I saw there may have been some complications defining the feature recomendations, specially if I included knn which doesn't have an easy way to identify feature importance.\n",
+    "\n",
+    "6. I also thought of starting off by finding the optimal threshold, and then try to derive the best model, using that threshold. I decided against it because I was taking lomger on the project than I had planned, and I would have to manually code the class selection based on the new threshold, and score it based on that. \n",
+    "  "
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python (learn-env)",
+   "language": "python",
+   "name": "learn-env"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.8.5"
+  },
+  "toc": {
+   "base_numbering": 1,
+   "nav_menu": {},
+   "number_sections": true,
+   "sideBar": true,
+   "skip_h1_title": false,
+   "title_cell": "Table of Contents",
+   "title_sidebar": "Contents",
+   "toc_cell": false,
+   "toc_position": {},
+   "toc_section_display": true,
+   "toc_window_display": true
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}
