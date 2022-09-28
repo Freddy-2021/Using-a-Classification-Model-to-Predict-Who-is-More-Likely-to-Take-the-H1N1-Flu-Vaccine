@@ -93,8 +93,6 @@ df.head()
 **<font size='3'>Confusion Plot for the best model::</font>**<br>
 ![image5](./images/conf_plot.png)<br><br><br>
 
-## Finding best threshold to optimize F1 score:
-**<font size='3'>Based on an optimal threshold of 0.571795, I get an optimal f1 score of 0.646012 .</font>**<br>
 
 # Recommendations
 <b>metric</b>: F1 score
@@ -105,30 +103,20 @@ df.head()
                          max_features = 32, min_samples_split = 2, n_estimators = 150,<br>
                          random_state = 42, n_jobs = -1<br>
                               
-<b>how to handle class imbalance</b> &emsp;: SMOTE(sampling_strategy=0.40) 
+<b>how to handle class imbalance</b> &emsp;: Get more questionaires with respondents who are taking the vaccine, in order to balance the data. As it stands now, the ratio of respondents who have not taken the vaccine, to those who have, is almost 4:1. Short of that, using SMOTE(sampling_strategy=0.40) gave the best results.
+
+ 
 
 <b>Recommend to place a special emphasis on the following features, since they account for more
 than 99% of toal feature importance metric (decrease in the gini impurity score):</b>
-* race_White
-* opinion_h1n1_sick_from_vacc
-* employment_status_Employed
-* opinion_seas_sick_from_vacc
-* h1n1_knowledge
-* age_group
-* race_Black
-* h1n1_concern
-* opinion_seas_vacc_effective
-* opinion_seas_risk
-* health_worker_0.0
-* health_worker_1.0
-* doctor_recc_seasonal_1.0
-* opinion_h1n1_risk
-* doctor_recc_seasonal_0.0
+* seasonal_vaccine
+* doctor_recc_h1n1
+* doctor_recc_seasonal
 * opinion_h1n1_vacc_effective
-* doctor_recc_h1n1_1.0
-* doctor_recc_h1n1_0.0
-* seasonal_vaccine_1
-* seasonal_vaccine_0<br><br><br>
+* opinion_h1n1_risk
+* health_worker<br><br>
+
+<b>I believe that this small reduction in the 'feature importance metric' could be offset by having a considerably shorter questionnaire, with only six questions, thereby having more people successfully completing them.</b><br><br><br>
 
 
 
