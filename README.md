@@ -2,7 +2,7 @@
 
 
 
-# Phase 3 Project
+# Using a Classification Model to Predict Who is More Likely to Take the H1n1 Flu Vaccine
 
 **Author:** Freddy Abrahamson<br>
 **Date created:** 3-27-2022<br>
