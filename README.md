@@ -126,16 +126,24 @@ than 99% of toal feature importance metric (decrease in the gini impurity score)
 # Project Conclusion: Main Take-aways
 
 
-**<font size='3'> 1. It is critical to have some understanding of the subject matter one is dealing with, in order to be able to select features, more effectively, and root out non-sensical results.</font>**<br>
-**<font size='3'>2. If the ordinal data in one's data set does not have a monotonic relationship, one may wind up with non-sensical results. For example, recommending a downgrade from 'grd_10 Very Good' to 'grd_9 Better', in order to increase the price of the home.</font>**<br>
-**<font size='3'>3. High multi-colinearity between features, may lead to unexpected results. For example, one may have two features that are highly correlated, where both have positive Pearson correlations, but one has a negative regression coefficient.</font>**<br>
-**<font size='3'>4. The features with the higher Perason correlation coefficient, do not necessarily have a higher regression coefficient. I found this particularly in the 'dummy' variables. I think this may have something to do with these variables not having an equal number of occurences, since only one can be chosen at a time, for each row of data.</font>**<br>
-**<font size='3'>5. I understand that the distribution of the residuals do not necessarily have to be perfectly normal, but I am not clear as to what is defined as 'normal enough'.</font>**<br>
-**<font size='3'>6. I may have been able to further improve the R-squared score by adding 'sqft_bsmnt' as a binary variable.</font>**<br>
-**<font size='3'>7. I originally planned to associate the zip codes with their corresponding average household incomes (per the U.S census bureau),then binning by income groups, and creating interactions, but ultimately decicded against it because it generated too many columns, and didn't lend itself to learning.</font>**<br>
-**<font size='3'>8. Log transforming the dependent variable can help approximate a normal residual distribution.</font>**<br>
-**<font size='3'>9. Remove rows with outliers in the dependent variable can help approximate a normal residual distribution.</font>**<br><br><br><br>
+1. This project helped me appreciate that there a few things that should be done prior to working with the models:<br>
+      <ol> 
+       1. Clearly define a question, or goal that would be resolved by the model.<br>
+       2. Choose a metric that would best measure the success of your model,as it pertains to your goal.<br>
+       3. Try to define a naive strategy, and its success rate, so you have something to compare your model to.
+      </ol><br>
+      
+2. My goal in this project was to create a model that would identify, as correctly as possible, who will, and who won't take the h1n1 vaccine. My prediction results could be            categorized as any of the following four:<br>
+    <ol>       
+     1. True positive: The respondent was predicted to have taken the vaccine, and actually took it.<br>
+     2. True negative: The respondent was predicted not to have taken the vaccine, and did not take it.<br>
+     3. False positive: The respondent was predicted to have taken the vaccine, but did not take it.<br>
+     4. False negative: The respondent was predicted to not have taken the vaccine, but actually took it.
+    </ol><br>
+3. Given that my goal is to be as 'accurate' as possible, there is no upside in identifying one class more aggresively than the other. I chose the F1 metric because it does a           good job of minimizing false positives, and false negatives on an imbalanced data set.<br>
 
+4. I used the auc function to determine the best train/test score combination. I set the difference between the train and the test scores as the x axis, and the test score itself as the y axis. Based on this the Random Forest model was the best.<br>
+5. I would consider finding the optimal threshold for each model, and see if that makes a difference.<br>
 
 
 
