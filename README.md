@@ -66,32 +66,32 @@ df.head()
 </font><br><br><br>
 
 **<font size='3'>The following is a description of the scaled dataframe after the preprocessing was completed:</font>**<br>
-![image5](./images/df_info_after_preproc.png)<br><br><br>
+![image2](./images/df_info_after_preproc.png)<br><br><br>
 
 # Classification models:<br>
 <font size='3'>I will create 4 different models: knn, decsion tree, random forest, and XGBoost. I will create a baseline model of each, as well as variations on the same model using GridsearchCV. Iwill use the f1 score as a metric. <br>
 1.&emsp; Knn basline score: 64.39%<br>
 &emsp; &emsp;knn gridsearch parameters:<br>
-![image7](./images/knn_params.png)<br><br><br>
+![image3](./images/knn_params.png)<br><br><br>
 2.&emsp; Decision Tree basline score: 60.26%<br>
 &emsp; &emsp;Decision Tree gridsearch parameters:<br>
-![image7](./images/dec_tree_params.png)<br><br><br>
+![image4](./images/dec_tree_params.png)<br><br><br>
 3.&emsp; Random Forest basline score: 66.96%<br>
 &emsp; &emsp;Random Forest gridsearch parameters:<br>
-![image7](./images/rand_forest_params.png)<br><br><br>
+![image5](./images/rand_forest_params.png)<br><br><br>
 4.&emsp; XGBoost basline score: 62.14%<br>
 &emsp; &emsp;XGBoost gridsearch parameters:<br>
-![image7](./images/xgboost_params.png)<br><br><br>
+![image6](./images/XGBoost_params.png)<br><br><br>
 
 # Choosing the Best Model:<br>
 **<font size='3'>The best model is Random Forest (based on the auc score):</font>**<br>
-![image5](./images/best_model_df.png)<br><br><br>
+![image7](./images/best_model_df.png)<br><br><br>
 
 
 # Recreating the  the Best Model:<br>
 **<font size='3'>After recreating the best model (Random Forest), with the parameters specified on the dataframe, we recieved an f1 score of 0.6227045075125209.</font>**<br>
 **<font size='3'>Confusion Plot for the best model::</font>**<br>
-![image5](./images/conf_plot.png)<br><br><br>
+![image3](./images/conf_plot.png)<br><br><br>
 
 
 # Recommendations
