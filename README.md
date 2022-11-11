@@ -49,7 +49,7 @@ For complete information on the dataset:
 https://www.drivendata.org/competitions/66/flu-shot-learning/page/211/<br><br><br>
 
 **<font size='3'>Original Dataframe Before Any Modification:</font>**<br>
-![image7](./images/df_info_orig.png)<br><br><br>
+![image1](./images/df_info_orig.png)<br><br><br>
 
 df.head()
 ## Preprocessing Data
